@@ -24,7 +24,7 @@ from .defenses import (
 from .detector import build_url_allowlist, detect
 from .llm import LLMClient
 from .payloads import ATTACK_CLASSES, PAYLOADS, Payload
-from .retrieval import BM25
+from .retrieval import BM25, DenseIndex
 
 RESULTS_DIR = Path("results") / "runs"
 
@@ -76,6 +76,8 @@ def run_experiment(
     limit_per_class: int | None = None,
     top_k: int = 4,
     runs_dir: Path = RESULTS_DIR,
+    retrieval: str = "bm25",
+    embeddings_client=None,
 ) -> Path:
     """Executa a grade completa.
 
@@ -83,17 +85,31 @@ def run_experiment(
     o documento-hospedeiro de UM payload. Isso reproduz o cenário real de
     injeção indireta (um documento comprometido dentro de uma base
     legítima) e evita que dois ataques disputem o contexto entre si.
+    Retrieval: `bm25` (padrão, sem dependências) ou `dense` (busca
+    vetorial; exige embeddings_client). A mecânica da injeção não muda
+    com o retriever — a comparação entre os dois é um resultado em si.
     """
     stacks = stacks or list(STACKS)
     clean = load_clean_corpus()
     allowlist = build_url_allowlist(clean)
     payloads = select_payloads(limit_per_class)
 
+    if retrieval == "dense" and embeddings_client is None:
+        raise SystemExit("Retrieval denso exige um cliente de embeddings.")
+
+    def build_index(payload: Payload):
+        documents = clean + [planted_document(payload)]
+        if retrieval == "dense":
+            return DenseIndex(documents, embeddings_client)
+        return BM25(documents)
+
+    indexes = {payload.id: build_index(payload) for payload in payloads}
+
     rows: list[dict] = []
     for stack in stacks:
         for payload in payloads:
             host = planted_document(payload)
-            index = BM25(clean + [host])
+            index = indexes[payload.id]
             for query_index, query in enumerate(payload.queries):
                 ranked = index.search(query, top_k)
                 documents = [r.document for r in ranked]
@@ -147,6 +163,8 @@ def run_experiment(
         "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "mode": mode,
         "client": client.name,
+        "retrieval": retrieval,
+        "embedding_model": embeddings_client.name if retrieval == "dense" else None,
         "stacks": [s.name for s in stacks],
         "limit_per_class": limit_per_class,
         "top_k": top_k,

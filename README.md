@@ -57,9 +57,12 @@ Para o experimento real, com modelo de API (grade completa: 200 chamadas de ~1�
 ```bash
 cp .env.example .env        # preencha a chave e o modelo (qualquer provedor LiteLLM)
 make run                    # executa e gera results/RESULTS.md
+make run-dense              # variação com retrieval vetorial denso
 ```
 
-Comandos individuais: `python -m rag_injection_lab run --real --stacks L0,L4 --limit 2` reduz a grade; `python -m rag_injection_lab report` regenera o relatório da última execução.
+O `LITELLM_MODEL` é o modelo de **geração** (chat). O `EMBEDDING_MODEL` (padrão `text-embedding-3-small`) só entra com `--retrieval dense`, para embedar o corpus e as consultas — o corpus inteiro mais as 40 consultas únicas custam menos de um centavo, com cache commitado para nunca pagar de novo.
+
+Comandos individuais: `python -m rag_injection_lab run --real --retrieval dense --stacks L0,L4 --limit 2` reduz a grade; `python -m rag_injection_lab report` regenera o relatório da última execução.
 
 ## Resultados
 
@@ -71,7 +74,7 @@ O `RESULTS.md` commitado neste repositório foi gerado em **modo mock** e carreg
 
 ## Decisões de desenho
 
-- **BM25 em Python puro, sem embeddings.** O método de recuperação decide *qual* documento chega ao prompt, não o que o modelo faz com ele. Um retriever determinista mantém o experimento reproduzível em qualquer máquina, sem GPU e sem download de modelo.
+- **Retrieval léxico por padrão, denso opcional.** O método de recuperação decide *qual* documento chega ao prompt, não o que o modelo faz com ele. O BM25 determinista em Python puro mantém o experimento reproduzível em qualquer máquina, sem GPU e sem download de modelo; o `--retrieval dense` (ex.: `text-embedding-3-small`) permite medir se a mecânica da injeção muda com busca vetorial — a hipótese do laboratório é que não muda.
 - **Um documento envenenado por tentativa.** Cada consulta roda contra o corpus limpo inteiro + o hospedeiro de um payload. É o cenário realista da ameaça (uma base legítima com um documento comprometido) e evita que dois ataques disputem o contexto entre si.
 - **Detector determinístico, sem LLM juiz.** O sucesso de cada classe é verificável por padrão objetivo, o que torna a medição reproduzível e gratuita.
 - **ASR sempre com intervalo de confiança.** São 10 tentativas por célula: o IC de Wilson (bem-comportado perto de 0% e 100%) aparece junto do número para que ninguém leia "0/10" como "impossível".
@@ -94,13 +97,14 @@ Os payloads são didáticos, visíveis e usam infraestrutura inexistente (`.exam
 corpus/clean/          documentos legítimos (atas, board, runbooks, WhatsApp, GitHub)
 src/rag_injection_lab/
   payloads.py          4 classes × 5 variantes, com hospedeiro e consultas
-  retrieval.py         BM25 do zero (k1=1.5, b=0.75)
+  retrieval.py         BM25 do zero (k1=1.5, b=0.75) + busca densa por cosseno
+  embeddings.py        LiteLLM embeddings com cache + embedding determinístico p/ mock
   defenses.py          pilhas L0–L4, spotlighting, hardening, schema, filtro
   detector.py          detecção determinística de sucesso por classe
   llm.py               LiteLLM com cache em arquivo + cliente mock
   runner.py            grade do experimento + manifesto por execução
   report.py            tabela ASR com IC de Wilson
-tests/                 21 testes, incluindo e2e mock da grade completa
+tests/                 25 testes, incluindo e2e mock da grade completa
 results/               execuções, cache e RESULTS.md — commitados como evidência
 ```
 

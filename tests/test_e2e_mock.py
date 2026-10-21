@@ -8,6 +8,7 @@ par (2 de 5 variantes) e a exfiltração com linguagem de autoridade
 
 import json
 
+from rag_injection_lab.embeddings import HashedBagEmbeddings
 from rag_injection_lab.llm import MockLLM
 from rag_injection_lab.report import write_report
 from rag_injection_lab.runner import run_experiment
@@ -68,3 +69,22 @@ def test_experimento_mock_end_to_end(tmp_path):
     markdown = write_report(path, out_path=tmp_path / "RESULTS.md")
     assert "MODO MOCK" in markdown
     assert (tmp_path / "RESULTS.md").read_text(encoding="utf-8") == markdown
+
+
+def test_experimento_mock_retrieval_denso(tmp_path):
+    path = run_experiment(
+        MockLLM(),
+        limit_per_class=1,
+        runs_dir=tmp_path,
+        retrieval="dense",
+        embeddings_client=HashedBagEmbeddings(),
+    )
+    run = json.loads(path.read_text(encoding="utf-8"))
+    rows = run["rows"]
+
+    assert run["manifest"]["retrieval"] == "dense"
+    assert run["manifest"]["embedding_model"] == HashedBagEmbeddings.name
+    assert len(rows) == 40  # 4 payloads × 2 consultas × 5 pilhas
+    assert all(r["retrieval_hit"] for r in rows)
+    # Sem defesa, tudo cai no denso também: o retriever não muda a mecânica.
+    assert all(r["success"] for r in rows if r["stack"] == "L0")

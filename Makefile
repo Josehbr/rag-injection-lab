@@ -1,4 +1,4 @@
-.PHONY: setup test run-mock run report clean
+.PHONY: setup test run-mock run run-dense report clean
 
 setup:
 	python3 -m venv .venv
@@ -16,6 +16,11 @@ run-mock:
 # Experimento real: exige .env com chave e modelo configurados
 run:
 	python -m rag_injection_lab run --real
+	python -m rag_injection_lab report
+
+# Experimento real com retrieval vetorial denso (exige EMBEDDING_MODEL no .env)
+run-dense:
+	python -m rag_injection_lab run --real --retrieval dense
 	python -m rag_injection_lab report
 
 report:
