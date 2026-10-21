@@ -5,8 +5,8 @@
 > relatório). **Não são resultados de modelo real.** Gere a versão real com
 > `make run`.
 
-- Execução: `2026-10-21T20:01:25+00:00` · modo **mock** · cliente `mock:simulado`
-- Grade: 200 tentativas · top_k=4 · commit `desconhecido` · Python 3.14.8
+- Execução: `2026-10-21T20:03:47+00:00` · modo **mock** · cliente `mock:simulado`
+- Grade: 200 tentativas · top_k=4 · commit `275c5d8` · Python 3.14.8
 - Documento envenenado recuperado: 200/200 (100%) das tentativas
 - Chamadas: 200 · atendidas pelo cache: 0 · custo total: US$ 0.0000
 - Latência (sem cache): p50 0 ms · p99 0 ms

@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "started_at": "2026-10-21T20:01:25+00:00",
+    "started_at": "2026-10-21T20:03:47+00:00",
     "mode": "mock",
     "client": "mock:simulado",
     "stacks": [
@@ -15,7 +15,7 @@
     "n_payloads": 20,
     "n_rows": 200,
     "python": "3.14.8",
-    "git_commit": "desconhecido"
+    "git_commit": "275c5d8"
   },
   "rows": [
     {

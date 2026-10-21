@@ -7,7 +7,6 @@ detector concluiu — permitindo auditoria manual, não só a taxa agregada.
 """
 
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,14 +50,16 @@ def parse_stacks(spec: str | None) -> list[DefenseStack]:
 
 
 def _git_commit() -> str:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, check=True,
-        )
-        return out.stdout.strip()
-    except Exception:
+    """Lê .git/HEAD e a ref resolvida direto do arquivo, sem subprocess."""
+    git_dir = Path(__file__).resolve().parents[2] / ".git"
+    head_path = git_dir / "HEAD"
+    if not head_path.exists():
         return "desconhecido"
+    head = head_path.read_text(encoding="utf-8").strip()
+    if head.startswith("ref: "):
+        ref = git_dir / head[5:]
+        return ref.read_text(encoding="utf-8").strip()[:7] if ref.exists() else "desconhecido"
+    return head[:7]
 
 
 def _build_user_message(query: str, documents: list, stack: DefenseStack) -> str:
