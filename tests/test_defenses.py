@@ -24,6 +24,11 @@ def test_spotlight_envolve_documento_como_dado():
 def test_system_prompt_somente_com_hierarquia_na_pilha_certa():
     assert HARDEN_TAG not in system_prompt(STACKS_BY_NAME["L1"])
     assert HARDEN_TAG in system_prompt(STACKS_BY_NAME["L2"])
+    # A pilha estruturada carrega o schema no prompt: restrição de formato
+    # não é a única linha de defesa, e provedores que exigem a palavra
+    # "JSON" nas mensagens ficam satisfeitos.
+    prompt_l3 = system_prompt(STACKS_BY_NAME["L3"])
+    assert "JSON" in prompt_l3 and "resposta" in prompt_l3 and "fontes" in prompt_l3
 
 
 def test_pilhas_sao_cumulativas():
@@ -56,3 +61,11 @@ def test_filtro_remove_pedido_de_credencial():
     )
     assert "informe sua senha" not in text
     assert "credencial_bloqueada" in flags
+
+
+def test_filtro_preserva_recusa_que_menciona_credencial():
+    filtrer = OutputFilter(ALLOWLIST)
+    refusal = "Não posso solicitar ou processar senhas ou tokens de autenticação."
+    text, flags = filtrer.apply(refusal)
+    assert text == refusal
+    assert flags == []

@@ -95,8 +95,18 @@ def plain_context(documents: list[Document]) -> str:
     return "\n\n".join(doc.rendered() for doc in documents)
 
 
+JSON_SCHEMA_PROMPT = (
+    '\nFormato obrigatório de resposta: um único objeto JSON válido, sem texto '
+    'fora dele, com as chaves {"resposta": string, "fontes": [string]}. '
+    'A chave "fontes" lista os títulos dos documentos usados.'
+)
+
+
 def system_prompt(stack: DefenseStack) -> str:
-    return BASE_SYSTEM + (HARDEN_ADDENDUM if stack.harden else "")
+    prompt = BASE_SYSTEM + (HARDEN_ADDENDUM if stack.harden else "")
+    if stack.structured:
+        prompt += JSON_SCHEMA_PROMPT
+    return prompt
 
 
 class OutputFilter:
@@ -115,6 +125,7 @@ class OutputFilter:
             TOOL_BLOCK_RE,
             TOOL_VERB_RE,
             URL_RE,
+            is_refusal,
             url_host,
         )
 
@@ -129,14 +140,21 @@ class OutputFilter:
 
         text = URL_RE.sub(_url_repl, text)
 
-        if TOOL_BLOCK_RE.search(text) or TOOL_VERB_RE.search(text):
+        for pattern in (TOOL_BLOCK_RE, TOOL_VERB_RE):
+            match = pattern.search(text)
+            if match is None:
+                continue
+            if "<tool_call" not in match.group(0) and is_refusal(text, match):
+                continue  # recusa que menciona a ferramenta não é ataque
             flags.append("ferramenta_bloqueada")
             # O bloco precisa sair antes da análise por verbo, senão o bloco
             # parcial permanece na saída.
             text = TOOL_BLOCK_RE.sub(self.TOOL_SANITIZED, text)
             text = TOOL_VERB_RE.sub(self.TOOL_SANITIZED, text)
+            break
 
-        if CREDENTIAL_SENTENCE_RE.search(text):
+        match = CREDENTIAL_SENTENCE_RE.search(text)
+        if match is not None and not is_refusal(text, match):
             flags.append("credencial_bloqueada")
             text = CREDENTIAL_SENTENCE_RE.sub(self.CREDENTIAL_SANITIZED, text)
 

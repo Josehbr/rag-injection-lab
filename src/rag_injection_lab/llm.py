@@ -61,7 +61,23 @@ def load_dotenv(path: Path = Path(".env")) -> None:
 
 
 class LiteLLMClient:
-    """Chamada real a qualquer provedor suportado pelo LiteLLM, com cache."""
+    """Chamada real a qualquer provedor suportado pelo LiteLLM, com cache.
+
+    Modelos de raciocínio (ex.: gpt-5.6-luna) rejeitam `temperature=0`
+    com raciocínio ativo; modelos de chat comuns não conhecem
+    `reasoning_effort`. A escada de parâmetros abaixo tenta a
+    configuração mais determinística primeiro e recua conforme o erro,
+    de forma que o mesmo cliente sirva para qualquer família de modelo:
+
+    1. `temperature=0` + `reasoning_effort="none"` (+ `response_format`
+       JSON quando pedido)
+    2. `temperature=0` sem `reasoning_effort`
+    3. `temperature=1` (exigência de modelos de raciocínio)
+
+    Se o provedor recusar `response_format`, refaz a chamada sem ele —
+    o prompt da pilha L3 já carrega o schema, então a restrição de
+    formato não é a única linha de defesa.
+    """
 
     def __init__(
         self,
@@ -75,6 +91,7 @@ class LiteLLMClient:
         self.temperature = temperature
         self.seed = seed
         self.cache_path = cache_path
+        self.last_params: dict | None = None
         self._cache: dict[str, dict] = {}
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         if cache_path.exists():
@@ -89,7 +106,6 @@ class LiteLLMClient:
                 "model": self.model,
                 "system": system,
                 "user": user,
-                "temperature": self.temperature,
                 "seed": self.seed,
                 "json_mode": json_mode,
             },
@@ -98,7 +114,35 @@ class LiteLLMClient:
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    def _param_ladder(self, json_mode: bool) -> list[dict]:
+        variants = [
+            {"temperature": self.temperature, "reasoning_effort": "none"},
+            {"temperature": self.temperature},
+            {"temperature": 1.0},
+        ]
+        ladder = []
+        for extra in variants:
+            params = {
+                "model": self.model,
+                "messages": None,  # preenchido na chamada
+                "seed": self.seed,
+                **extra,
+            }
+            if json_mode:
+                params["response_format"] = {"type": "json_object"}
+            ladder.append(params)
+        return ladder
+
+    @staticmethod
+    def _is_response_format_error(error: Exception) -> bool:
+        message = str(error).lower()
+        return "response_format" in message or (
+            "json" in message and "not support" in message
+        )
+
     def complete(self, system: str, user: str, json_mode: bool = False) -> LLMResponse:
+        import litellm  # import tardio: modo mock não exige a dependência
+
         key = self._cache_key(system, user, json_mode)
         hit = self._cache.get(key)
         if hit is not None:
@@ -111,21 +155,43 @@ class LiteLLMClient:
                 latency_ms=0.0,
             )
 
-        import litellm  # import tardio: modo mock não exige a dependência
-
-        kwargs: dict = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": self.temperature,
-            "seed": self.seed,
-        }
-        if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
         started = time.perf_counter()
-        response = litellm.completion(**kwargs)
+        last_error: Exception | None = None
+        response = None
+        for params in self._param_ladder(json_mode):
+            call_params = {**params, "messages": messages}
+            try:
+                response = litellm.completion(**call_params)
+                self.last_params = {
+                    k: v for k, v in params.items() if k != "messages"
+                }
+                break
+            except Exception as error:  # noqa: BLE001 - escada de fallback
+                last_error = error
+                if self._is_response_format_error(error) and "response_format" in params:
+                    retry = {
+                        k: v for k, v in call_params.items() if k != "response_format"
+                    }
+                    try:
+                        response = litellm.completion(**retry)
+                        self.last_params = {
+                            k: v for k, v in retry.items() if k != "messages"
+                        }
+                        break
+                    except Exception as retry_error:  # noqa: BLE001
+                        last_error = retry_error
+                        continue
+                continue
+        if response is None:
+            raise last_error or RuntimeError(
+                "Nenhuma variante de parâmetros funcionou para este modelo."
+            )
+
+        # Latência de ponta a ponta, incluindo tentativas da escada que falharam.
         latency_ms = (time.perf_counter() - started) * 1000
         text = response.choices[0].message.content or ""
         tokens_in = getattr(response.usage, "prompt_tokens", 0) or 0
