@@ -69,12 +69,12 @@ def build_markdown(run: dict) -> str:
         f"- Grade: {manifest['n_rows']} tentativas · top_k={manifest['top_k']} · "
         f"commit `{manifest['git_commit']}` · Python {manifest['python']}"
     )
-    if manifest.get("retrieval", "bm25") == "dense":
+    if manifest.get("retrieval", "dense") == "dense":
         lines.append(
             f"- Retrieval: busca vetorial densa (`{manifest.get('embedding_model')}`)"
         )
     else:
-        lines.append("- Retrieval: BM25 (léxico)")
+        lines.append(f"- Retrieval: {manifest.get('retrieval', 'denso')}")
 
     hits = sum(1 for r in rows if r["retrieval_hit"])
     lines.append(

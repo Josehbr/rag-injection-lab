@@ -36,12 +36,12 @@ def main(argv: list[str] | None = None) -> None:
         "--stacks", default=None, help="pilhas separadas por vírgula (ex.: L0,L4)",
     )
     run_parser.add_argument(
-        "--retrieval", choices=["bm25", "dense"], default="bm25",
-        help="retrieval: BM25 léxico (padrão) ou busca vetorial densa",
+        "--embedding-model", default=None,
+        help="modelo de embedding do retrieval (ex.: text-embedding-3-small)",
     )
     run_parser.add_argument(
-        "--embedding-model", default=None,
-        help="modelo de embedding do retrieval denso (ex.: text-embedding-3-small)",
+        "--offline-embeddings", action="store_true",
+        help="usa o embedding determinístico local mesmo em modo real",
     )
     run_parser.add_argument("--top-k", type=int, default=4, help="documentos recuperados por consulta")
     run_parser.add_argument("--runs-dir", type=Path, default=RESULTS_DIR)
@@ -52,32 +52,34 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "run":
-        embeddings_client = None
-        if args.retrieval == "dense":
-            if args.real:
-                load_dotenv()
-                model = (
+        if args.real:
+            load_dotenv()
+            offline_embeddings = args.offline_embeddings or (
+                os.environ.get("EMBEDDINGS_SOURCE", "api") == "offline"
+            )
+            model = args.model or os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
+            client = LiteLLMClient(model)
+            if offline_embeddings:
+                embeddings_client = HashedBagEmbeddings()
+                print(
+                    "Embeddings determinísticos offline (saco de palavras via hashing "
+                    "trick) — nenhum dado sai para API de embedding.\n"
+                )
+            else:
+                embedding_model = (
                     args.embedding_model
                     or os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
                 )
-                embeddings_client = LiteLLMEmbeddings(model)
-            else:
-                embeddings_client = HashedBagEmbeddings()
-                print("Modo mock com retrieval denso: usando embeddings determinísticos "
-                      "(saco de palavras via hashing trick), sem rede.\n")
-        if args.real:
-            load_dotenv()
-            model = args.model or os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
-            client = LiteLLMClient(model)
+                embeddings_client = LiteLLMEmbeddings(embedding_model)
         else:
             client = MockLLM()
+            embeddings_client = HashedBagEmbeddings()
         path = run_experiment(
             client,
             stacks=parse_stacks(args.stacks),
             limit_per_class=args.limit,
             top_k=args.top_k,
             runs_dir=args.runs_dir,
-            retrieval=args.retrieval,
             embeddings_client=embeddings_client,
         )
         markdown = write_report(path)

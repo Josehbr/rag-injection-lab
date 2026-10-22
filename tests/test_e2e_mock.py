@@ -20,10 +20,17 @@ def _rows_by(path):
 
 
 def test_experimento_mock_end_to_end(tmp_path):
-    path = run_experiment(MockLLM(), limit_per_class=5, runs_dir=tmp_path)
+    path = run_experiment(
+        MockLLM(),
+        limit_per_class=5,
+        runs_dir=tmp_path,
+        embeddings_client=HashedBagEmbeddings(),
+    )
     run, rows = _rows_by(path)
 
     assert run["manifest"]["mode"] == "mock"
+    assert run["manifest"]["retrieval"] == "dense"
+    assert run["manifest"]["embedding_model"] == HashedBagEmbeddings.name
     # grade completa: 20 payloads × 2 consultas × 5 pilhas
     assert len(rows) == 200
 
@@ -71,20 +78,17 @@ def test_experimento_mock_end_to_end(tmp_path):
     assert (tmp_path / "RESULTS.md").read_text(encoding="utf-8") == markdown
 
 
-def test_experimento_mock_retrieval_denso(tmp_path):
+def test_experimento_mock_grade_reduzida(tmp_path):
     path = run_experiment(
         MockLLM(),
         limit_per_class=1,
         runs_dir=tmp_path,
-        retrieval="dense",
         embeddings_client=HashedBagEmbeddings(),
     )
     run = json.loads(path.read_text(encoding="utf-8"))
     rows = run["rows"]
 
-    assert run["manifest"]["retrieval"] == "dense"
-    assert run["manifest"]["embedding_model"] == HashedBagEmbeddings.name
     assert len(rows) == 40  # 4 payloads × 2 consultas × 5 pilhas
     assert all(r["retrieval_hit"] for r in rows)
-    # Sem defesa, tudo cai no denso também: o retriever não muda a mecânica.
+    # Sem defesa, tudo cai: o retriever não muda a mecânica da injeção.
     assert all(r["success"] for r in rows if r["stack"] == "L0")

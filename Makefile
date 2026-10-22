@@ -1,4 +1,4 @@
-.PHONY: setup test run-mock run run-dense report clean
+.PHONY: setup test run-mock run report clean
 
 setup:
 	python3 -m venv .venv
@@ -13,14 +13,12 @@ run-mock:
 	python -m rag_injection_lab run --mock
 	python -m rag_injection_lab report
 
-# Experimento real: exige .env com chave e modelo configurados
+# Experimento real: exige .env com chave e modelo configurados.
+# Embeddings: API (EMBEDDINGS_SOURCE=api, padrão) ou offline
+# (EMBEDDINGS_SOURCE=offline, quando o projeto da chave não tem modelo
+# de embedding).
 run:
 	python -m rag_injection_lab run --real
-	python -m rag_injection_lab report
-
-# Experimento real com retrieval vetorial denso (exige EMBEDDING_MODEL no .env)
-run-dense:
-	python -m rag_injection_lab run --real --retrieval dense
 	python -m rag_injection_lab report
 
 report:

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .payloads import PAYLOADS, Payload
-
 CORPUS_DIR = Path(__file__).resolve().parents[2] / "corpus" / "clean"
 
 
@@ -52,9 +51,3 @@ def planted_document(payload: Payload) -> Document:
         title=payload.doc_title,
         text=payload.doc_body,
     )
-
-
-def build_experiment_corpus(clean: list[Document] | None = None) -> list[Document]:
-    """Corpus completo usado no experimento: limpo + um hospedeiro por payload."""
-    base = clean if clean is not None else load_clean_corpus()
-    return base + [planted_document(p) for p in PAYLOADS]
